@@ -16,19 +16,27 @@
 
 #include "helper.h"
 
+// declare and initial upload file container and web server
 File fsUploadFile;
-
 ESP8266WebServer server = ESP8266WebServer(80);
 
+/*
+ * forward declare functions
+ * ----------------------------------------------------------------------------
+ */
 void sendAll();
+void sendCurrentStates();
 void setRelay(uint8_t idx, uint8_t value);
 void sendRelay(uint8_t idx);
-void setMask(uint8_t idx, uint8_t value);
-void sendMask(uint8_t idx);
+void setServo(uint8_t idx, uint8_t value);
+void sendServo(uint8_t idx);
 void sendStatus();
 void sendConfigfile();
 
-//format bytes
+/*
+ * format bytes
+ * ----------------------------------------------------------------------------
+ */
 String formatBytes(size_t bytes) {
   if (bytes < 1024) {
     return String(bytes) + "B";
@@ -41,6 +49,10 @@ String formatBytes(size_t bytes) {
   }
 }
 
+/*
+ * get content type by file extension
+ * ----------------------------------------------------------------------------
+ */
 String getContentType(String filename) {
   if (server.hasArg("download")) return "application/octet-stream";
   else if (filename.endsWith(".htm")) return "text/html";
@@ -61,6 +73,10 @@ String getContentType(String filename) {
   return "text/plain";
 }
 
+/*
+ * handle file read by given path
+ * ----------------------------------------------------------------------------
+ */
 bool handleFileRead(String path) {
   DEBUG_PRINTLN("handleFileRead: " + path);
   if (path.endsWith("/")) path += "index.htm";
@@ -77,7 +93,10 @@ bool handleFileRead(String path) {
   return false;
 }
 
-// get directory: GET http://wifi-relay.local/list
+/*
+ * get directory: GET http://wifi-relay.local/list
+ * ----------------------------------------------------------------------------
+ */
 void handleFileList() {
   if (!server.hasArg("dir")) {
     server.send(500, "text/plain", "BAD ARGS");
@@ -103,13 +122,19 @@ void handleFileList() {
   server.send(200, "text/json", output);
 }
 
-// get editor: GET http://wifi-relay.local/edit
+/*
+ * get editor: GET http://wifi-relay.local/edit
+ * ----------------------------------------------------------------------------
+ */
 void handleGetEditor() {
   if (!handleFileRead("/edit.htm")) 
     server.send(404, "text/plain", "FileNotFound");
 }
 
-// create file: PUT http://wifi-relay.local/edit
+/*
+ * create file: PUT http://wifi-relay.local/edit
+ * ----------------------------------------------------------------------------
+ */
 void handleFileCreate() {
   if (server.args() == 0)
     return server.send(500, "text/plain", "BAD ARGS");
@@ -128,7 +153,10 @@ void handleFileCreate() {
   path = String();
 }
 
-// delete file: DELETE http://wifi-relay.local/edit
+/*
+ * delete file: DELETE http://wifi-relay.local/edit
+ * ----------------------------------------------------------------------------
+ */
 void handleFileDelete() {
   if (server.args() == 0) return server.send(500, "text/plain", "BAD ARGS");
   String path = server.arg(0);
@@ -142,7 +170,10 @@ void handleFileDelete() {
   path = String();
 }
 
-// upload file: POST http://wifi-relay.local/edit
+/*
+ * upload file: POST http://wifi-relay.local/edit
+ * ----------------------------------------------------------------------------
+ */
 void handleFileUpload() {
   if (server.uri() != "/edit") return;
   HTTPUpload& upload = server.upload();
@@ -163,13 +194,27 @@ void handleFileUpload() {
   }
 }
 
-// get all relay states: GET http://wifi-relay.local/all
+/*
+ * get all relay and servo states: GET http://wifi-relay.local/all
+ * ----------------------------------------------------------------------------
+ */
 void handleGetAll() {
   sendAll();
 }
 
-// get relay state: GET http://wifi-relay.local/relay?id=0
-// set relay state: GET http://wifi-relay.local/relay?id=0&value=0 or 1
+/*
+ * get current states: GET http://wifi-relay.local/current
+ * ----------------------------------------------------------------------------
+ */
+void handleGetCurrentStates() {
+  sendCurrentStates();
+}
+
+/*
+ * get relay state: GET http://wifi-relay.local/relay?id=0
+ * set relay state: GET http://wifi-relay.local/relay?id=0&value=0 or 1
+ * ----------------------------------------------------------------------------
+ */
 void handleGetRelay() {
   uint8_t idx = server.arg("id").toInt() -1;
   if (server.hasArg("value")) {
@@ -183,22 +228,28 @@ void handleGetRelay() {
   }
 }
 
-// get mask state: GET http://wifi-relay.local/mask?id=0
-// set mask state: GET http://wifi-relay.local/mask?id=0&value=0 or 1
-void handleGetMask() {
+/*
+ * get servo state: GET http://wifi-relay.local/servo?id=0
+ * set servo state: GET http://wifi-relay.local/servo?id=0&value=0 or 1
+ * ----------------------------------------------------------------------------
+ */
+void handleGetServo() {
   uint8_t idx = server.arg("id").toInt() -1;
   if (server.hasArg("value")) {
     String value = server.arg("value");
-    setMask(idx, value.toInt());
+    setServo(idx, value.toInt());
     server.sendHeader("Location", String("/index.htm"), true);
     server.send(302, "text/plain", "");
     return;
   } else {
-    sendMask(idx);
+    sendServo(idx);
   }
 }
 
-// set toggle state: POST http://wifi-relay.local/toggle with value=0 or 1
+/*
+ * set toggle state: POST http://wifi-relay.local/toggle with value=0 or 1
+ * ----------------------------------------------------------------------------
+ */
 void handlePostToggle() {
   String data = server.arg("plain");
   DynamicJsonBuffer jsonBuffer;
@@ -206,10 +257,10 @@ void handlePostToggle() {
   String cmd = json["cmd"];
   String id = json["id"];
   String value = json["value"];
-  if (cmd == "mask") {
-    uint8_t idx = id.substring(4).toInt() -1;
-    setMask(idx, value.toInt());
-    sendMask(idx);
+  if (cmd == "servo") {
+    uint8_t idx = id.substring(5).toInt() -1;
+    setServo(idx, value.toInt());
+    sendServo(idx);
   } else if (cmd == "relay") {
     uint8_t idx = id.substring(5).toInt() -1;
     setRelay(idx, value.toInt());
@@ -217,17 +268,26 @@ void handlePostToggle() {
   }
 }
 
-// get status: GET http://wifi-relay.local/settings/status
+/*
+ * get status: GET http://wifi-relay.local/settings/status
+ * ----------------------------------------------------------------------------
+ */
 void handleGetStatus() {
   sendStatus();
 }
 
-// get config: GET http://wifi-relay.local/settings/configfile
+/*
+ * get config: GET http://wifi-relay.local/settings/configfile
+ * ----------------------------------------------------------------------------
+ */
 void handleGetConfigfile() {
   sendConfigfile();
 }
 
-// upload config.json: POST http://wifi-relay.local/settings/configfile
+/*
+ * upload config.json: POST http://wifi-relay.local/settings/configfile
+ * ----------------------------------------------------------------------------
+ */
 void handlePostConfigfile() {
   String data = server.arg("plain");
   DynamicJsonBuffer jsonBuffer;

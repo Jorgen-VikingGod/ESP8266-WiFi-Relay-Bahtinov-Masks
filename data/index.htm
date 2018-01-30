@@ -59,7 +59,7 @@
             <form class="form-horizontal">
               <div class="row form-group">
                 <div class="col-xs-3">
-                  <label class="control-label">Relay 1</label>
+                  <label class="control-label" id="relay1Name">Relay 1</label>
                 </div><!-- col-3 -->
                 <div class="col-xs-9">
                   <div id="relay1" class="btn-group btn-group-justified btn-toggle" role="group" aria-label="Relay 1">
@@ -74,7 +74,7 @@
               </div><!-- row -->
               <div class="row form-group">
                 <div class="col-xs-3">
-                  <label class="control-label">Relay 2</label>
+                  <label class="control-label" id="relay2Name">Relay 2</label>
                 </div><!-- col-3 -->
                 <div class="col-xs-9">
                   <div id="relay2" class="btn-group btn-group-justified btn-toggle" role="group" aria-label="Relay 2">
@@ -89,7 +89,7 @@
               </div><!-- row -->
               <div class="row form-group">
                 <div class="col-xs-3">
-                  <label class="control-label">Relay 3</label>
+                  <label class="control-label" id="relay3Name">Relay 3</label>
                 </div><!-- col-3 -->
                 <div class="col-xs-9">
                   <div id="relay3" class="btn-group btn-group-justified btn-toggle" role="group" aria-label="Relay 3">
@@ -104,7 +104,7 @@
               </div><!-- row -->
               <div class="row form-group">
                 <div class="col-xs-3">
-                  <label class="control-label">Relay 4</label>
+                  <label class="control-label" id="relay4Name">Relay 4</label>
                 </div><!-- col-3 -->
                 <div class="col-xs-9">
                   <div id="relay4" class="btn-group btn-group-justified btn-toggle" role="group" aria-label="Relay 4">
@@ -119,7 +119,7 @@
               </div><!-- row -->
               <div class="row form-group">
                 <div class="col-xs-3">
-                  <label class="control-label">Relay 5</label>
+                  <label class="control-label" id="relay5Name">Relay 5</label>
                 </div><!-- col-3 -->
                 <div class="col-xs-9">
                   <div id="relay5" class="btn-group btn-group-justified btn-toggle" role="group" aria-label="Relay 5">
@@ -140,49 +140,49 @@
         <div class="panel panel-primary">
           <div class="panel-heading">Bahtinov Masks</div>
           <div class="panel-body">
-            <p><span class="text-muted">Change mask states open or close by toggle buttons.</span></p>
+            <p><span class="text-muted">Change servo states open or close by toggle buttons.</span></p>
             <form class="form-horizontal">
               <div class="row form-group">
                 <div class="col-xs-3">
-                  <label class="control-label">Mask 1</label>
+                  <label class="control-label" id="servo1Name">Servo 1</label>
                 </div><!-- col-3 -->
                 <div class="col-xs-9">
-                  <div id="mask1" class="btn-group btn-group-justified btn-toggle" role="group" aria-label="Mask 1">
+                  <div id="servo1" class="btn-group btn-group-justified btn-toggle" role="group" aria-label="Servo 1">
                     <div class="btn-group" role="group">
-                      <button type="button" class="btn btn-default" id="mask1On" state="1">Open</button>
+                      <button type="button" class="btn btn-default" id="servo1On" state="1">Open</button>
                     </div>
                     <div class="btn-group" role="group">
-                      <button type="button" class="btn btn-primary active" id="mask1Off" state="0">Close</button>
+                      <button type="button" class="btn btn-primary active" id="servo1Off" state="0">Close</button>
                     </div>
                   </div>
                 </div><!-- col-9 -->
               </div><!-- row -->
               <div class="row form-group">
                 <div class="col-xs-3">
-                  <label class="control-label">Mask 2</label>
+                  <label class="control-label" id="servo2Name">Servo 2</label>
                 </div><!-- col-3 -->
                 <div class="col-xs-9">
-                  <div id="mask2" class="btn-group btn-group-justified btn-toggle" role="group" aria-label="Mask 2">
+                  <div id="servo2" class="btn-group btn-group-justified btn-toggle" role="group" aria-label="Servo 2">
                     <div class="btn-group" role="group">
-                      <button type="button" class="btn btn-default" id="mask2On" state="1">Open</button>
+                      <button type="button" class="btn btn-default" id="servo2On" state="1">Open</button>
                     </div>
                     <div class="btn-group" role="group">
-                      <button type="button" class="btn btn-primary active" id="mask2Off" state="0">Close</button>
+                      <button type="button" class="btn btn-primary active" id="servo2Off" state="0">Close</button>
                     </div>
                   </div>
                 </div><!-- col-9 -->
               </div><!-- row -->
               <div class="row form-group">
                 <div class="col-xs-3">
-                  <label class="control-label">Mask 3</label>
+                  <label class="control-label" id="servo3Name">Servo 3</label>
                 </div><!-- col-3 -->
                 <div class="col-xs-9">
-                  <div id="mask3" class="btn-group btn-group-justified btn-toggle" role="group" aria-label="Mask 3">
+                  <div id="servo3" class="btn-group btn-group-justified btn-toggle" role="group" aria-label="Servo 3">
                     <div class="btn-group" role="group">
-                      <button type="button" class="btn btn-default" id="mask3On" state="1">Open</button>
+                      <button type="button" class="btn btn-default" id="servo3On" state="1">Open</button>
                     </div>
                     <div class="btn-group" role="group">
-                      <button type="button" class="btn btn-primary active" id="mask3Off" state="0">Close</button>
+                      <button type="button" class="btn btn-primary active" id="servo3Off" state="0">Close</button>
                     </div>
                   </div>
                 </div><!-- col-9 -->
@@ -194,5 +194,6 @@
     </div><!-- row -->
   </div><!-- container -->
   <script src="js/scripts.js"></script>
+  <script src="js/index.js"></script>
 </body>
 </html>

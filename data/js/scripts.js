@@ -34,11 +34,12 @@ $.extend({
 });
 
 $(document).ready(function() {
+  $('[data-toggle="tooltip"]').tooltip();
   getAll();
 });
 
 $('#btnRefresh').click(function() {
-  getAll();
+  getCurrent();
 });
 
 $('.btn-toggle').click(function() {
@@ -73,29 +74,12 @@ function updateToggleButton(id, state) {
   }
 }
 
-function getAll() {
-  $('#loadModal').modal('show');
-  $.get(urlBase + 'all', function(data) {
-    $('#loadModal').modal('hide');
-    $('#status').html('Connecting...');
-    updateToggleButton('relay1', data.relay1);
-    updateToggleButton('relay2', data.relay2);
-    updateToggleButton('relay3', data.relay3);
-    updateToggleButton('relay4', data.relay4);
-    updateToggleButton('relay5', data.relay5);
-    updateToggleButton('mask1', data.mask1);
-    updateToggleButton('mask2', data.mask2);
-    updateToggleButton('mask3', data.mask3);
-    $('#status').html('Ready');
-  });
-}
-
 function setMode(id, value) {
   var datatosend;
   if (id.includes('relay')) {
     datatosend = {cmd: 'relay', id: id, value: value};
-  } else if (id.includes('mask')) {
-    datatosend = {cmd: 'mask', id: id, value: value};
+  } else if (id.includes('servo')) {
+    datatosend = {cmd: 'servo', id: id, value: value};
   }
   $.jpost(urlBase + 'toggle', datatosend).then(function(data) {
     var value = data[id];

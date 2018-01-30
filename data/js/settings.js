@@ -1,30 +1,6 @@
-$(document).ready(function() {
-  $('[data-toggle="tooltip"]').tooltip();
-});
-
 $('#btnRefStat').click(function() {
   // get current stats
-  $('#loadModal').modal('show');
-  $.get(urlBase + 'settings/status', function(data) {
-    $('#loadModal').modal('hide');
-    $('#chip').text(data.chipid);
-    $('#cpu').text(data.cpu + ' MHz');
-    $('#heap').text(data.heap + ' Bytes');
-    $('#heap').css('width', (data.heap*100)/81920 + '%');
-    colorStatusbar($('#heap'));
-    $('#flash').text(data.availsize + ' Bytes');
-    $('#flash').css('width', (data.availsize*100)/1044464 + '%');
-    colorStatusbar($('#flash'));
-    $('#spiffs').text(data.availspiffs + ' Bytes');
-    $('#spiffs').css('width', (data.availspiffs*100)/data.spiffssize + '%');
-    colorStatusbar($('#spiffs'));
-    $('#ssidstat').text(data.ssid);
-    $('#ip').text(data.ip);
-    $('#gate').text(data.gateway);
-    $('#mask').text(data.netmask);
-    $('#dns').text(data.dns);
-    $('#mac').text(data.mac);
-  });
+  getCurrent();
   $('#btnRefStat').css('display', 'none');
   $('#btnRefStat2').css('display', 'block');
 });
@@ -46,25 +22,39 @@ $('#btnSaveConf').click(function() {
     adminpwd: adminpwd,
     ssid: $('#ssid').val(),
     wifipwd: $('#wifipwd').val(),
-    relay1: { type: $('#relay1Type option:selected').val(),
+    relay1: { name: $('#relay1Name').val(),
+              type: $('#relay1Type option:selected').val(),
               pin: $('#relay1Pin option:selected').val() },
-    relay2: { type: $('#relay2Type option:selected').val(),
+    relay2: { name: $('#relay2Name').val(),
+              type: $('#relay2Type option:selected').val(),
               pin: $('#relay2Pin option:selected').val() },
-    relay3: { type: $('#relay3Type option:selected').val(),
+    relay3: { name: $('#relay3Name').val(),
+              type: $('#relay3Type option:selected').val(),
               pin: $('#relay3Pin option:selected').val() },
-    relay4: { type: $('#relay4Type option:selected').val(),
+    relay4: { name: $('#relay4Name').val(),
+              type: $('#relay4Type option:selected').val(),
               pin: $('#relay4Pin option:selected').val() },
-    relay5: { type: $('#relay5Type option:selected').val(),
+    relay5: { name: $('#relay5Name').val(),
+              type: $('#relay5Type option:selected').val(),
               pin: $('#relay5Pin option:selected').val() },
-    mask1:  { open: $('#mask1Open option:selected').val(),
-              close: $('#mask1Close option:selected').val(),
-              pin: $('#mask1Pin option:selected').val() },
-    mask2:  { open: $('#mask2Open option:selected').val(),
-              close: $('#mask2Close option:selected').val(),
-              pin: $('#mask2Pin option:selected').val() },
-    mask3:  { open: $('#mask3Open option:selected').val(),
-              close: $('#mask3Close option:selected').val(),
-              pin: $('#mask3Pin option:selected').val() },
+    servo1:  { name: $('#servo1Name').val(),
+              open: $('#servo1Open option:selected').val(),
+              close: $('#servo1Close option:selected').val(),
+              pulsemin: $('#servo1PulseMin').val(),
+              pulsemax: $('#servo1PulseMax').val(),
+              pin: $('#servo1Pin option:selected').val() },
+    servo2:  { name: $('#servo2Name').val(),
+              open: $('#servo2Open option:selected').val(),
+              close: $('#servo2Close option:selected').val(),
+              pulsemin: $('#servo2PulseMin').val(),
+              pulsemax: $('#servo2PulseMax').val(),
+              pin: $('#servo2Pin option:selected').val() },
+    servo3:  { name: $('#servo3Name').val(),
+              open: $('#servo3Open option:selected').val(),
+              close: $('#servo3Close option:selected').val(),
+              pulsemin: $('#servo3PulseMin').val(),
+              pulsemax: $('#servo3PulseMax').val(),
+              pin: $('#servo3Pin option:selected').val() },
   };
   $.jpost(urlBase + 'settings/configfile', datatosend);
   updateSettingsDialog();
@@ -109,6 +99,30 @@ function updateSettingsDialog() {
   }, 10000);
 }
 
+function getCurrent() {
+  $('#loadModal').modal('show');
+  $.get(urlBase + 'settings/status', function(data) {
+    $('#loadModal').modal('hide');
+    $('#chip').text(data.chipid);
+    $('#cpu').text(data.cpu + ' MHz');
+    $('#heap').text(data.heap + ' Bytes');
+    $('#heap').css('width', (data.heap*100)/81920 + '%');
+    colorStatusbar($('#heap'));
+    $('#flash').text(data.availsize + ' Bytes');
+    $('#flash').css('width', (data.availsize*100)/1044464 + '%');
+    colorStatusbar($('#flash'));
+    $('#spiffs').text(data.availspiffs + ' Bytes');
+    $('#spiffs').css('width', (data.availspiffs*100)/data.spiffssize + '%');
+    colorStatusbar($('#spiffs'));
+    $('#ssidstat').text(data.ssid);
+    $('#ip').text(data.ip);
+    $('#gate').text(data.gateway);
+    $('#mask').text(data.netmask);
+    $('#dns').text(data.dns);
+    $('#mac').text(data.mac);
+  });
+}
+
 function getAll() {
   $('#loadModal').modal('show');
   $.get(urlBase + 'settings/configfile', function(data) {
@@ -117,25 +131,47 @@ function getAll() {
     $('#hostname').val(data.hostname);
     $('#ssid').val(data.ssid);
     $('#wifipwd').val(data.wifipwd);
+    var relay1Name = (data.relay1.name ? data.relay1.name : 'Relay 1');
+    $('#relay1Name').val(relay1Name);
     $('#relay1Type').val(data.relay1.type).change();
     $('#relay1Pin').val(data.relay1.pin).change();
+    var relay2Name = (data.relay2.name ? data.relay2.name : 'Relay 2');
+    $('#relay2Name').val(relay2Name);
     $('#relay2Type').val(data.relay2.type).change();
     $('#relay2Pin').val(data.relay2.pin).change();
+    var relay3Name = (data.relay3.name ? data.relay3.name : 'Relay 3');
+    $('#relay3Name').val(relay3Name);
     $('#relay3Type').val(data.relay3.type).change();
     $('#relay3Pin').val(data.relay3.pin).change();
+    var relay4Name = (data.relay4.name ? data.relay4.name : 'Relay 4');
+    $('#relay4Name').val(relay4Name);
     $('#relay4Type').val(data.relay4.type).change();
     $('#relay4Pin').val(data.relay4.pin).change();
+    var relay5Name = (data.relay5.name ? data.relay5.name : 'Relay 5');
+    $('#relay5Name').val(relay5Name);
     $('#relay5Type').val(data.relay5.type).change();
     $('#relay5Pin').val(data.relay5.pin).change();
-    $('#mask1Open').val(data.mask1.open).change();
-    $('#mask1Close').val(data.mask1.close).change();
-    $('#mask1Pin').val(data.mask1.pin).change();
-    $('#mask2Open').val(data.mask2.open).change();
-    $('#mask2Close').val(data.mask2.close).change();
-    $('#mask2Pin').val(data.mask2.pin).change();
-    $('#mask3Open').val(data.mask3.open).change();
-    $('#mask3Close').val(data.mask3.close).change();
-    $('#mask3Pin').val(data.mask3.pin).change();
+    var servo1Name = (data.servo1.name ? data.servo1.name : 'Servo 1');
+    $('#servo1Name').val(servo1Name);
+    $('#servo1Open').val(data.servo1.open).change();
+    $('#servo1Close').val(data.servo1.close).change();
+    $('#servo1PulseMin').val(data.servo1.pulsemin);
+    $('#servo1PulseMax').val(data.servo1.pulsemax);
+    $('#servo1Pin').val(data.servo1.pin).change();
+    var servo2Name = (data.servo2.name ? data.servo2.name : 'Servo 2');
+    $('#servo2Name').val(servo2Name);
+    $('#servo2Open').val(data.servo2.open).change();
+    $('#servo2Close').val(data.servo2.close).change();
+    $('#servo2PulseMin').val(data.servo2.pulsemin);
+    $('#servo2PulseMax').val(data.servo2.pulsemax);
+    $('#servo2Pin').val(data.servo2.pin).change();
+    var servo3Name = (data.servo3.name ? data.servo3.name : 'Servo 3');
+    $('#servo3Name').val(servo3Name);
+    $('#servo3Open').val(data.servo3.open).change();
+    $('#servo3Close').val(data.servo3.close).change();
+    $('#servo3PulseMin').val(data.servo3.pulsemin);
+    $('#servo3PulseMax').val(data.servo3.pulsemax);
+    $('#servo3Pin').val(data.servo3.pin).change();
     var dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(data, null, 2));
     $('#downloadSet').attr({download: data.hostname + '-settings.json',href: dataStr});
     $('#chip').text(data.chipid);

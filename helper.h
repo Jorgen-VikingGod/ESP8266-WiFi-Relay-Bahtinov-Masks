@@ -19,10 +19,63 @@
  */
 #define _debug 1
 
+/*
+ * mask servo container
+ * ----------------------------------------------------------------------------
+ */
+struct sServo {
+  uint8_t pin;
+  uint8_t open;
+  uint8_t close;
+  uint8_t state;
+  bool sweep;
+  uint16_t pulseMin;
+  uint16_t pulseMax;
+  sServo(uint8_t servoPin, uint8_t servoOpen = 0, uint8_t servoClose = 180, uint16_t servoPulseMin = 130, uint16_t servoPulseMax = 150, uint8_t servoState = 1, bool servoSweep = false) {
+    pin = servoPin;
+    open = servoOpen;
+    close = servoClose;
+    pulseMin = servoPulseMin;
+    pulseMax = servoPulseMax;
+    state = servoState;
+    sweep = servoSweep;
+  }
+  uint16_t currentPulseLength() {
+    uint8_t pos = (state ? open : close);
+    return pulseLength(pos);
+  }
+  uint16_t pulseLength(uint8_t pos) {
+    return map(pos, 0, 180, pulseMin, pulseMax);
+  }
+};
+
+/*
+ * relay container
+ * ----------------------------------------------------------------------------
+ */
+struct sRelay {
+  uint8_t pin;
+  uint8_t type;
+  uint8_t state;
+  sRelay(uint8_t relayPin, uint8_t relayType = HIGH, uint8_t relayState = LOW) {
+    pin = relayPin;
+    type = relayType;
+    state = relayState;
+  }
+};
+
+/*
+ * format ip address as String
+ * ----------------------------------------------------------------------------
+ */
 String printIP(IPAddress adress) {
   return (String)adress[0] + "." + (String)adress[1] + "." + (String)adress[2] + "." + (String)adress[3];
 }
 
+/*
+ * debug messages
+ * ----------------------------------------------------------------------------
+ */
 template <typename... Args>
 void DEBUG_PRINTF(const char *format, Args &&...args) {
   if (_debug) {
@@ -54,15 +107,5 @@ void DEBUG_PRINTLN(Generic text, Format format) {
   }
 }
 
-void parseBytes(const char* str, char sep, byte* bytes, int maxBytes, int base) {
-  for (int i = 0; i < maxBytes; i++) {
-    bytes[i] = strtoul(str, NULL, base);  // Convert byte
-    str = strchr(str, sep);               // Find next separator
-    if (str == NULL || *str == '\0') {
-      break;                              // No more separators, exit
-    }
-    str++;                                // Point to next character after separator
-  }
-}
-
 #endif // _HELPER_H
+

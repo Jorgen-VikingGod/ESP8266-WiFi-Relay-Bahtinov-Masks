@@ -18,58 +18,55 @@ extern "C" {
 }
 
 #include <Arduino.h>
-
 #include <ESP8266WiFi.h>
 #include <ESP8266WiFiMulti.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
 #include <EEPROM.h>
+#include <Wire.h>
+#include <Adafruit_PWMServoDriver.h>
 #include <Hash.h>
-#include <Servo.h>
 #include <FS.h>
 #include "ArduinoJson.h"                  //https://github.com/bblanchon/ArduinoJson
 #include "webserver.h"
 
-Servo servo1;
-Servo servo2;
-Servo servo3;
+Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 
-struct sMask {
-  Servo *servo;
-  int pin;
-  uint8_t open;
-  uint8_t close;
-  uint8_t state;
-  uint8_t sweep;
-  sMask(Servo *pServo = nullptr, int maskPin = -1, uint8_t maskOpen = 20, uint8_t maskClose = 160, uint8_t maskState = 1, uint8_t maskSweep = 0) {
-    servo = pServo;
-    pin = maskPin;
-    open = maskOpen;
-    close = maskClose;
-    state = maskState;
-    sweep = maskSweep;
-  }
-};
-volatile sMask mask[3] = {sMask(&servo1, D1, 20, 90, 1, 0), sMask(&servo2, D2, 90, 20, 1, 0), sMask(&servo3, D3, 45, 135, 1, 0)};
+// declare and initial list of default servo settings
+sServo servo[3] = {sServo(13, 0, 180), sServo(14, 180, 0), sServo(15, 0, 90)};
+uint8_t servoCount = sizeof(servo) / sizeof(sServo);
 
-struct sRelay {
-  int pin;
-  uint8_t type;
-  uint8_t state;
-  sRelay(int relayPin = -1, uint8_t relayType = 1, uint8_t relayState = LOW) {
-    pin = relayPin;
-    type = relayType;
-    state = relayState;
-  }
-};
-volatile sRelay relay[5] = {sRelay(D4,1,LOW), sRelay(D5,1,LOW), sRelay(D6,1,LOW), sRelay(D7,1,LOW), sRelay(D8,1,LOW)};
+// declare and initial list of default relay settings
+sRelay relay[5] = {sRelay(D4), sRelay(D5), sRelay(D6), sRelay(D7), sRelay(D3)};
+uint8_t relayCount = sizeof(relay) / sizeof(sRelay);
 
+// declare WiFiMulti
 ESP8266WiFiMulti WiFiMulti;
 
+/*
+ * setup function
+ * ----------------------------------------------------------------------------
+ */
 void setup() {
+  // serial interface for debug messages
   if (_debug) {
     Serial.begin(115200);
   }
+  pinMode(D0, OUTPUT);
+  pinMode(D4, OUTPUT);
+  pinMode(D5, OUTPUT);
+  pinMode(D6, OUTPUT);
+  pinMode(D7, OUTPUT);
+  pinMode(D8, OUTPUT);
+  digitalWrite(D0, LOW);
+  digitalWrite(D4, LOW);
+  digitalWrite(D5, LOW);
+  digitalWrite(D6, LOW);
+  digitalWrite(D7, LOW);
+  digitalWrite(D8, LOW);
+  pwm.begin();
+  pwm.setPWMFreq(60);  // Analog servos run at ~60 Hz updates
+  yield();
   DEBUG_PRINT("\n");
   // use EEPROM
   EEPROM.begin(512);
@@ -80,14 +77,17 @@ void setup() {
   server.on("/edit", HTTP_GET, handleGetEditor);
   server.on("/edit", HTTP_PUT, handleFileCreate);
   server.on("/edit", HTTP_DELETE, handleFileDelete);
-  server.on("/edit", HTTP_POST, []() { server.send(200, "text/plain", ""); }, handleFileUpload);
+  server.on("/edit", HTTP_POST, []() {
+    server.send(200, "text/plain", "");
+  }, handleFileUpload);
   server.onNotFound([]() {
     if (!handleFileRead(server.uri()))
       server.send(404, "text/plain", "FileNotFound");
   });
   server.on("/all", HTTP_GET, handleGetAll);
+  server.on("/current", HTTP_GET, sendCurrentStates);
   server.on("/relay", HTTP_GET, handleGetRelay);
-  server.on("/mask", HTTP_GET, handleGetMask);
+  server.on("/servo", HTTP_GET, handleGetServo);
   server.on("/toggle", HTTP_POST, handlePostToggle);
   server.on("/settings/status", HTTP_GET, handleGetStatus);
   server.on("/settings/configfile", HTTP_GET, handleGetConfigfile);
@@ -100,44 +100,40 @@ void setup() {
     // if no configuration found,
     // try to connect hard coded multi APs
     connectSTA(nullptr, nullptr, "wifi-relay");
-    // initialize IO pins for relays
-    pinMode(relay[0].pin, OUTPUT);
-    pinMode(relay[1].pin, OUTPUT);
-    pinMode(relay[2].pin, OUTPUT);
-    pinMode(relay[3].pin, OUTPUT);
-    pinMode(relay[4].pin, OUTPUT);
-    // attach servo pins
-    mask[0].servo->attach(mask[0].pin);
-    mask[1].servo->attach(mask[1].pin);
-    mask[2].servo->attach(mask[2].pin);
   }
   // load last states from EEPROM
   loadSettings();
 }
 
+unsigned long previousMillis = 0;
+int interval = 250;
+
+/*
+ * main loop function
+ * ----------------------------------------------------------------------------
+ */  
 void loop() {
-  // switch servo motors if needed
-  for (uint8_t idx = 0; idx < 3; idx++) {
-    if (mask[idx].sweep && mask[idx].servo) {
-      uint8_t servoValue = (mask[idx].state ? mask[idx].open : mask[idx].close);
-      DEBUG_PRINTF("servo%d.write(%d)\n", idx + 1, servoValue);
-      if (!mask[idx].servo->attached()) {
-        mask[idx].servo->attach(mask[idx].pin);
+  // only drive servos to new position each 250ms
+  unsigned long currentMillis = millis();
+  if (currentMillis - previousMillis >= interval) {
+    // save the last update time
+    previousMillis = currentMillis;
+    // loop all servos and sweep to new position
+    for (uint8_t idx = 0; idx < servoCount; idx++) {
+      if (servo[idx].sweep) {
+        servo[idx].sweep = false;
+        pwm.setPWM(servo[idx].pin, 0, servo[idx].currentPulseLength());
       }
-      mask[idx].servo->write(servoValue);
-      delay(500);
-      if (mask[idx].servo->attached()) {
-        mask[idx].servo->detach();
-      }
-      mask[idx].sweep = 0;
     }
-    yield();
   }
   // handle http clients
   server.handleClient();
 }
 
-// load stored settings from EEPROM
+/*
+ * load stored settings from EEPROM
+ * ----------------------------------------------------------------------------
+ */
 void loadSettings() {
   // load relay states
   relay[0].state = EEPROM.read(0);
@@ -145,25 +141,37 @@ void loadSettings() {
   relay[2].state = EEPROM.read(2);
   relay[3].state = EEPROM.read(3);
   relay[4].state = EEPROM.read(4);
-  // load mask states
-  mask[0].state = EEPROM.read(5);
-  mask[1].state = EEPROM.read(6);
-  mask[2].state = EEPROM.read(7);
-  DEBUG_PRINTF("loadSettings: relay1: %d, relay2: %d, relay3: %d, relay4: %d, relay5: %d, mask1: %d, mask2: %d, mask3: %d\n", relay[0].state, relay[1].state, relay[2].state, relay[3].state, relay[4].state, mask[0].state, mask[1].state, mask[2].state);
+  // load servo states
+  servo[0].state = EEPROM.read(5);
+  servo[1].state = EEPROM.read(6);
+  servo[2].state = EEPROM.read(7);
+  DEBUG_PRINTF("loadSettings: relay1: %d, relay2: %d, relay3: %d, relay4: %d, relay5: %d, servo1: %d, servo2: %d, servo3: %d\n", relay[0].state, relay[1].state, relay[2].state, relay[3].state, relay[4].state, servo[0].state, servo[1].state, servo[2].state);
+  digitalWrite(D0, HIGH);
+  // initialize IO pins for relays
+  pinMode(relay[0].pin, OUTPUT);
+  pinMode(relay[1].pin, OUTPUT);
+  pinMode(relay[2].pin, OUTPUT);
+  pinMode(relay[3].pin, OUTPUT);
+  pinMode(relay[4].pin, OUTPUT);
   // set relay states
-  digitalWrite(relay[0].pin, relay[0].state);
-  digitalWrite(relay[1].pin, relay[1].state);
-  digitalWrite(relay[2].pin, relay[2].state);
-  digitalWrite(relay[3].pin, relay[3].state);
-  digitalWrite(relay[4].pin, relay[4].state);
+  setRelay(0, relay[0].state);
+  setRelay(1, relay[1].state);
+  setRelay(2, relay[2].state);
+  setRelay(3, relay[3].state);
+  setRelay(4, relay[4].state);
   // set sweep flags to force servo motors to drive on correct state (open or close)
-  mask[0].sweep = 1;
-  mask[1].sweep = 1;
-  mask[2].sweep = 1;
+  servo[0].sweep = true;
+  servo[1].sweep = true;
+  servo[2].sweep = true;
+  delay(500);
 }
 
-// load config.json file and try to connect
+/*
+ * load config.json file and try to connect
+ * ----------------------------------------------------------------------------
+ */
 bool loadConfiguration() {
+  // try to open config.json file
   File configFile = SPIFFS.open("/config.json", "r");
   if (!configFile) {
     DEBUG_PRINTLN(F("[WARN] Failed to open config file"));
@@ -197,26 +205,22 @@ bool loadConfiguration() {
   relay[3].pin = json["relay4"]["pin"];
   relay[4].type = json["relay5"]["type"];
   relay[4].pin = json["relay5"]["pin"];
-  // initialize relay pins
-  pinMode(relay[0].pin, OUTPUT);
-  pinMode(relay[1].pin, OUTPUT);
-  pinMode(relay[2].pin, OUTPUT);
-  pinMode(relay[3].pin, OUTPUT);
-  pinMode(relay[4].pin, OUTPUT);
-  // get mask settings
-  mask[0].open = json["mask1"]["open"];
-  mask[0].close = json["mask1"]["close"];
-  mask[0].pin = json["mask1"]["pin"];
-  mask[1].open = json["mask2"]["open"];
-  mask[1].close = json["mask2"]["close"];
-  mask[1].pin = json["mask2"]["pin"];
-  mask[2].open = json["mask3"]["open"];
-  mask[2].close = json["mask3"]["close"];
-  mask[2].pin = json["mask3"]["pin"];
-  // attach servo motor pins
-  mask[0].servo->attach(mask[0].pin);
-  mask[1].servo->attach(mask[1].pin);
-  mask[2].servo->attach(mask[2].pin);
+  // get servo settings
+  servo[0].open = json["servo1"]["open"];
+  servo[0].close = json["servo1"]["close"];
+  servo[0].pulseMin = json["servo1"]["pulsemin"];
+  servo[0].pulseMax = json["servo1"]["pulsemax"];
+  servo[0].pin = json["servo1"]["pin"];
+  servo[1].open = json["servo2"]["open"];
+  servo[1].close = json["servo2"]["close"];
+  servo[1].pulseMin = json["servo2"]["pulsemin"];
+  servo[1].pulseMax = json["servo2"]["pulsemax"];
+  servo[1].pin = json["servo2"]["pin"];
+  servo[2].open = json["servo3"]["open"];
+  servo[2].close = json["servo3"]["close"];
+  servo[2].pulseMin = json["servo3"]["pulsemin"];
+  servo[2].pulseMax = json["servo3"]["pulsemax"];
+  servo[2].pin = json["servo3"]["pin"];
   // get stored wifi settings
   const char * ssid = json["ssid"];
   const char * password = json["wifipwd"];
@@ -228,7 +232,10 @@ bool loadConfiguration() {
   return true;
 }
 
-// Try to connect WiFi
+/*
+ * try to connect WiFi
+ * ----------------------------------------------------------------------------
+ */
 bool connectSTA(const char* ssid, const char* password, const char * hostname) {
   WiFi.mode(WIFI_STA);
   // add here your hard coded backfall wifi ssid and password
@@ -262,7 +269,10 @@ bool connectSTA(const char* ssid, const char* password, const char * hostname) {
   return true;
 }
 
-// send ESP8266 status
+/*
+ * send ESP8266 status
+ * ----------------------------------------------------------------------------
+ */
 void sendStatus() {
   DEBUG_PRINTLN("sendStatus()");
   struct ip_info info;
@@ -298,8 +308,12 @@ void sendStatus() {
   server.send(200, "application/json", json);
 }
 
-// send whole configfile and status
+/*
+ * send whole configfile and status
+ * ----------------------------------------------------------------------------
+ */
 void sendConfigfile() {
+  // try to open config.json file
   File configFile = SPIFFS.open("/config.json", "r");
   if (!configFile) {
     DEBUG_PRINTLN(F("[WARN] Failed to open config file"));
@@ -347,41 +361,136 @@ void sendConfigfile() {
   server.send(200, "application/json", json);
 }
 
-// send all states
+/*
+ * send all states
+ * ----------------------------------------------------------------------------
+ */
 void sendAll() {
   DEBUG_PRINTLN("sendAll()");
+  // try to open config.json file
+  File configFile = SPIFFS.open("/config.json", "r");
+  if (!configFile) {
+    DEBUG_PRINTLN(F("[WARN] Failed to open config file"));
+  }
+  size_t size = configFile.size();
+  // Allocate a buffer to store contents of the file.
+  std::unique_ptr<char[]> buf(new char[size]);
+  // We don't use String here because ArduinoJson library requires the input
+  // buffer to be mutable. If you don't use ArduinoJson, you may as well
+  // use configFile.readString instead.
+  configFile.readBytes(buf.get(), size);
   DynamicJsonBuffer jsonBuffer;
-  JsonObject &root = jsonBuffer.createObject();
-  root["relay1"] = relay[0].state;
-  root["relay2"] = relay[1].state;
-  root["relay3"] = relay[2].state;
-  root["relay4"] = relay[3].state;
-  root["relay5"] = relay[4].state;
-  root["mask1"] = mask[0].state;
-  root["mask2"] = mask[1].state;
-  root["mask3"] = mask[2].state;
-  String json;
-  root.printTo(json);
-  DEBUG_PRINTLN(json);
+  JsonObject& json = jsonBuffer.parseObject(buf.get());
+  if (!json.success()) {
+    DEBUG_PRINTLN(F("[WARN] Failed to parse config file"));
+  }
+  DynamicJsonBuffer jsonBuffer2;
+  JsonObject &root = jsonBuffer2.createObject();
+  // create relay json objects
+  JsonObject& relay1 = jsonBuffer2.createObject();
+  relay1["name"] = json["relay1"]["name"];
+  relay1["state"] = relay[0].state;
+  root.set("relay1", relay1);
+  JsonObject& relay2 = jsonBuffer2.createObject();
+  relay2["name"] = json["relay2"]["name"];
+  relay2["state"] = relay[1].state;
+  root.set("relay2", relay2);
+  JsonObject& relay3 = jsonBuffer2.createObject();
+  relay3["name"] = json["relay3"]["name"];
+  relay3["state"] = relay[2].state;
+  root.set("relay3", relay3);
+  JsonObject& relay4 = jsonBuffer2.createObject();
+  relay4["name"] = json["relay4"]["name"];
+  relay4["state"] = relay[3].state;
+  root.set("relay4", relay4);
+  JsonObject& relay5 = jsonBuffer2.createObject();
+  relay5["name"] = json["relay5"]["name"];
+  relay5["state"] = relay[4].state;
+  root.set("relay5", relay5);
+  // create servo json objects
+  JsonObject& servo1 = jsonBuffer2.createObject();
+  servo1["name"] = json["servo1"]["name"];
+  servo1["state"] = servo[0].state;
+  root.set("servo1", servo1);
+  JsonObject& servo2 = jsonBuffer2.createObject();
+  servo2["name"] = json["servo2"]["name"];
+  servo2["state"] = servo[1].state;
+  root.set("servo2", servo2);
+  JsonObject& servo3 = jsonBuffer2.createObject();
+  servo3["name"] = json["servo3"]["name"];
+  servo3["state"] = servo[2].state;
+  root.set("servo3", servo3);
+  String jsonStr;
+  root.printTo(jsonStr);
+  DEBUG_PRINTLN(jsonStr);
   server.setContentLength(root.measureLength());
-  server.send(200, "application/json", json);
+  server.send(200, "application/json", jsonStr);
 }
 
-// set current relay state and store it in EEPROM
+/*
+ * send current states
+ * ----------------------------------------------------------------------------
+ */
+void sendCurrentStates() {
+  DEBUG_PRINTLN("sendCurrentStates()");
+  DynamicJsonBuffer jsonBuffer;
+  JsonObject &root = jsonBuffer.createObject();
+  // create relay json values
+  JsonObject& relay1 = jsonBuffer.createObject();
+  relay1["state"] = relay[0].state;
+  root.set("relay1", relay1);
+  JsonObject& relay2 = jsonBuffer.createObject();
+  relay2["state"] = relay[1].state;
+  root.set("relay2", relay2);
+  JsonObject& relay3 = jsonBuffer.createObject();
+  relay3["state"] = relay[2].state;
+  root.set("relay3", relay3);
+  JsonObject& relay4 = jsonBuffer.createObject();
+  relay4["state"] = relay[3].state;
+  root.set("relay4", relay4);
+  JsonObject& relay5 = jsonBuffer.createObject();
+  relay5["state"] = relay[4].state;
+  root.set("relay5", relay5);
+  // create servo json values
+  JsonObject& servo1 = jsonBuffer.createObject();
+  servo1["state"] = servo[0].state;
+  root.set("servo1", servo1);
+  JsonObject& servo2 = jsonBuffer.createObject();
+  servo2["state"] = servo[1].state;
+  root.set("servo2", servo2);
+  JsonObject& servo3 = jsonBuffer.createObject();
+  servo3["state"] = servo[2].state;
+  root.set("servo3", servo3);
+  String jsonStr;
+  root.printTo(jsonStr);
+  DEBUG_PRINTLN(jsonStr);
+  server.setContentLength(root.measureLength());
+  server.send(200, "application/json", jsonStr);
+}
+
+/*
+ * set current relay state and store it in EEPROM
+ * ----------------------------------------------------------------------------
+ */
 void setRelay(uint8_t idx, uint8_t value) {
   DEBUG_PRINTF("setRelay(%d, %d)\n", idx, value);
+  uint8_t lowValue  = (relay[idx].type == 0 ? HIGH : LOW);
+  uint8_t highValue = (relay[idx].type == 0 ? LOW  : HIGH);
   relay[idx].state = (value == 0 ? LOW : HIGH);
-  digitalWrite(relay[idx].pin, relay[idx].state);
+  digitalWrite(relay[idx].pin, (relay[idx].state == LOW ? lowValue : highValue));
   EEPROM.write(idx, relay[idx].state);
   EEPROM.commit();
 }
 
-// send relay state back to website (idx = index of relay)
+/*
+ * send relay state back to website (idx = index of relay)
+ * ----------------------------------------------------------------------------
+ */
 void sendRelay(uint8_t idx) {
   DEBUG_PRINTF("sendRelay(%d)\n", idx);
   DynamicJsonBuffer jsonBuffer;
   JsonObject &root = jsonBuffer.createObject();
-  root["relay"+String(idx+1)] = relay[idx].state;
+  root["relay" + String(idx + 1)] = relay[idx].state;
   String json;
   root.printTo(json);
   DEBUG_PRINTLN(json);
@@ -389,24 +498,32 @@ void sendRelay(uint8_t idx) {
   server.send(200, "application/json", json);
 }
 
-// set current mask state and store it in EEPROM
-void setMask(uint8_t idx, uint8_t value) {
-  DEBUG_PRINTF("setMask(%d, %d)\n", idx, value);
-  mask[idx].state = value;
-  mask[idx].sweep = 1;
-  EEPROM.write(5 + idx, mask[idx].state);
+/*
+ * set current servo state and store it in EEPROM
+ * ----------------------------------------------------------------------------
+ */
+void setServo(uint8_t idx, uint8_t value) {
+  DEBUG_PRINTF("setServo(%d, %d)\n", idx, value);
+  servo[idx].state = value;
+  // set sweep flags to force servo motors to drive on correct state (open or close)
+  servo[idx].sweep = true;
+  EEPROM.write(5 + idx, servo[idx].state);
   EEPROM.commit();
 }
 
-// send mask state back to website (idx = index of mask)
-void sendMask(uint8_t idx) {
-  DEBUG_PRINTF("sendMask(%d)\n", idx);
+/*
+ * send servo state back to website (idx = index of servo)
+ * ----------------------------------------------------------------------------
+ */
+void sendServo(uint8_t idx) {
+  DEBUG_PRINTF("sendServo(%d)\n", idx);
   DynamicJsonBuffer jsonBuffer;
   JsonObject &root = jsonBuffer.createObject();
-  root["mask"+String(idx + 1)] = mask[idx].state;
+  root["servo" + String(idx + 1)] = servo[idx].state;
   String json;
   root.printTo(json);
   DEBUG_PRINTLN(json);
   server.setContentLength(root.measureLength());
   server.send(200, "application/json", json);
 }
+
