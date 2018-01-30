@@ -19,7 +19,6 @@ extern "C" {
 
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
-#include <ESP8266WiFiMulti.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
 #include <EEPROM.h>
@@ -30,6 +29,8 @@ extern "C" {
 #include "ArduinoJson.h"                  //https://github.com/bblanchon/ArduinoJson
 #include "webserver.h"
 
+const char *default_password = "admin";
+
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 
 // declare and initial list of default servo settings
@@ -39,9 +40,6 @@ uint8_t servoCount = sizeof(servo) / sizeof(sServo);
 // declare and initial list of default relay settings
 sRelay relay[5] = {sRelay(D4), sRelay(D5), sRelay(D6), sRelay(D7), sRelay(D3)};
 uint8_t relayCount = sizeof(relay) / sizeof(sRelay);
-
-// declare WiFiMulti
-ESP8266WiFiMulti WiFiMulti;
 
 /*
  * setup function
@@ -71,7 +69,17 @@ void setup() {
   // use EEPROM
   EEPROM.begin(512);
   // use SPIFFS
-  SPIFFS.begin();
+  SPIFFS.begin();  
+  
+  // Add service to MDNS
+  MDNS.addService("http", "tcp", 80);
+  // load config.json and connect to WiFI
+  if (!loadConfiguration()) {
+    // if no configuration found,
+    // try to connect hard coded multi APs
+    connectSTA(nullptr, nullptr, "wifi-relay");
+  }
+
   // handle requests
   server.on("/list", HTTP_GET, handleFileList);
   server.on("/edit", HTTP_GET, handleGetEditor);
@@ -80,10 +88,17 @@ void setup() {
   server.on("/edit", HTTP_POST, []() {
     server.send(200, "text/plain", "");
   }, handleFileUpload);
+  server.on("/update", HTTP_POST, []() {
+    server.sendHeader("Connection", "close");
+    server.send(200, "text/plain", (Update.hasError())?"FAIL":"OK");
+    ESP.restart();
+  }, handleFirmwareUpdate);
   server.onNotFound([]() {
     if (!handleFileRead(server.uri()))
       server.send(404, "text/plain", "FileNotFound");
   });
+  server.on("/wifi", HTTP_GET, handleGetWiFi);
+  server.on("/wifi", HTTP_POST, handlePostWiFi);
   server.on("/all", HTTP_GET, handleGetAll);
   server.on("/current", HTTP_GET, sendCurrentStates);
   server.on("/relay", HTTP_GET, handleGetRelay);
@@ -93,14 +108,7 @@ void setup() {
   server.on("/settings/configfile", HTTP_GET, handleGetConfigfile);
   server.on("/settings/configfile", HTTP_POST, handlePostConfigfile);
   server.begin();
-  // Add service to MDNS
-  MDNS.addService("http", "tcp", 80);
-  // load config.json and connect to WiFI
-  if (!loadConfiguration()) {
-    // if no configuration found,
-    // try to connect hard coded multi APs
-    connectSTA(nullptr, nullptr, "wifi-relay");
-  }
+  
   // load last states from EEPROM
   loadSettings();
 }
@@ -225,6 +233,7 @@ bool loadConfiguration() {
   const char * ssid = json["ssid"];
   const char * password = json["wifipwd"];
   const char * hostname = json["hostname"];
+
   // try to connect with stored settings and hard coded ones
   if (!connectSTA(ssid, password, hostname)) {
     return false;
@@ -237,35 +246,66 @@ bool loadConfiguration() {
  * ----------------------------------------------------------------------------
  */
 bool connectSTA(const char* ssid, const char* password, const char * hostname) {
-  WiFi.mode(WIFI_STA);
-  // add here your hard coded backfall wifi ssid and password
-  //WiFiMulti.addAP("<YOUR-SSID-1>", "<YOUR-WIFI-PASS-1>");
-  //WiFiMulti.addAP("<YOUR-SSID-2>", "<YOUR-WIFI-PASS-2>");
   if (ssid && password) {
-    WiFiMulti.addAP(ssid, password);
-  }
-  // We try it for 30 seconds and give up on if we can't connect
-  unsigned long now = millis();
-  uint8_t timeout = 30; // define when to time out in seconds
-  DEBUG_PRINT(F("[INFO] Trying to connect WiFi: "));
-  while (WiFiMulti.run() != WL_CONNECTED) {
-    if (millis() - now < timeout * 1000) {
-      delay(200);
-      DEBUG_PRINT(F("."));
+    WiFi.mode(WIFI_STA);
+    String stored_ssid = WiFi.SSID();
+    if (stored_ssid != NULL && stored_ssid != "" && stored_ssid == ssid) {
+      DEBUG_PRINTLN(F(""));
+      DEBUG_PRINT(F("[INFO] WiFi begin: '")); // Great, we connected, inform
+      DEBUG_PRINT(stored_ssid); 
+      DEBUG_PRINTLN(F("'"));
+      WiFi.softAPdisconnect();
+      WiFi.begin();
     } else {
-      DEBUG_PRINTLN("");
-      DEBUG_PRINTLN(F("[WARN] Couldn't connect in time"));
-      return false;
+      DEBUG_PRINTLN(F(""));
+      DEBUG_PRINT(F("[INFO] WiFi begin: '")); // Great, we connected, inform
+      DEBUG_PRINT(ssid); 
+      DEBUG_PRINT(F("' - '")); 
+      DEBUG_PRINT(password); 
+      DEBUG_PRINTLN(F("'"));
+      WiFi.disconnect();
+      WiFi.softAPdisconnect();
+      WiFi.begin(ssid, password);
     }
   }
+  uint8_t wifi_counter = 0;
+  while (WiFi.status() != WL_CONNECTED && wifi_counter < 20)
+  {
+    delay(500);
+    Serial.print(".");
+    wifi_counter++;
+  }
   if (hostname) {
+    WiFi.hostname(hostname);
     if (MDNS.begin(hostname)) {
       DEBUG_PRINTLN(F("MDNS responder started"));
     }
+    if (WiFi.status() != WL_CONNECTED || wifi_counter >= 20) {
+      WiFi.mode(WIFI_AP);
+      DEBUG_PRINTLN(WiFi.softAP(hostname, default_password) ? "ready" : "failed");
+    }
+  } else {
+    String hname = "wifi-relay-";
+    hname += String(ESP.getChipId(), HEX);
+    char hostname2[50];
+    hname.toCharArray(hostname2, 50);
+    WiFi.hostname(hostname2);
+    if (MDNS.begin(hostname2)) {
+      DEBUG_PRINTLN(F("MDNS responder started"));
+    }
+    if (WiFi.status() != WL_CONNECTED || wifi_counter >= 20) {
+      WiFi.mode(WIFI_AP);
+      DEBUG_PRINTLN(WiFi.softAP(hostname2, default_password) ? "ready" : "failed");
+    }
   }
+  
+  DEBUG_PRINTLN("");
+  DEBUG_PRINT(wifi_counter);
   DEBUG_PRINTLN("");
   DEBUG_PRINT(F("[INFO] Client IP address: ")); // Great, we connected, inform
   DEBUG_PRINTLN(WiFi.localIP());
+  DEBUG_PRINT(F("[INFO] AP IP address: ")); // Great, we connected, inform
+  DEBUG_PRINTLN(WiFi.softAPIP());
   return true;
 }
 
@@ -354,6 +394,38 @@ void sendConfigfile() {
   root["ip"] = printIP(ipaddr);
   root["gateway"] = printIP(gwaddr);
   root["netmask"] = printIP(nmaddr);
+  String json;
+  root.printTo(json);
+  DEBUG_PRINTLN(json);
+  server.setContentLength(root.measureLength());
+  server.send(200, "application/json", json);
+}
+
+/*
+ * send ESP8266 status
+ * ----------------------------------------------------------------------------
+ */
+void sendWiFi() {
+  DEBUG_PRINTLN("sendWiFi()");
+  struct ip_info info;
+  DynamicJsonBuffer jsonBuffer;
+  JsonObject& root = jsonBuffer.createObject();
+  root["command"] = "wifi";
+  root["chipid"] = String(ESP.getChipId(), HEX);
+  wifi_get_ip_info(STATION_IF, &info);
+  struct station_config conf;
+  wifi_station_get_config(&conf);
+  root["ssid"] = String(reinterpret_cast<char*>(conf.ssid));
+  root["dns"] = printIP(WiFi.dnsIP());
+  root["mac"] = WiFi.macAddress();
+  IPAddress ipaddr = IPAddress(info.ip.addr);
+  IPAddress gwaddr = IPAddress(info.gw.addr);
+  IPAddress nmaddr = IPAddress(info.netmask.addr);
+  root["ip"] = printIP(ipaddr);
+  root["gateway"] = printIP(gwaddr);
+  root["netmask"] = printIP(nmaddr);
+  root["localip"] = WiFi.localIP().toString();
+  root["softapip"] = WiFi.softAPIP().toString();
   String json;
   root.printTo(json);
   DEBUG_PRINTLN(json);

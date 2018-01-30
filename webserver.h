@@ -32,6 +32,7 @@ void setServo(uint8_t idx, uint8_t value);
 void sendServo(uint8_t idx);
 void sendStatus();
 void sendConfigfile();
+void sendWiFi();
 
 /*
  * format bytes
@@ -195,6 +196,33 @@ void handleFileUpload() {
 }
 
 /*
+ * upload firmware: POST http://wifi-relay.local/update
+ * ----------------------------------------------------------------------------
+ */
+void handleFirmwareUpdate() {
+  if (server.uri() != "/update") return;
+  HTTPUpload& upload = server.upload();
+  if (upload.status == UPLOAD_FILE_START) {
+    WiFiUDP::stopAll();
+    DEBUG_PRINTF("Update: %s\n", upload.filename.c_str());
+    uint32_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+    if(!Update.begin(maxSketchSpace)){//start with max available size
+      Update.printError(Serial);
+    }
+  } else if (upload.status == UPLOAD_FILE_WRITE) {
+    if(Update.write(upload.buf, upload.currentSize) != upload.currentSize){
+      Update.printError(Serial);
+    }
+  } else if (upload.status == UPLOAD_FILE_END) {
+    if(Update.end(true)){ //true to set the size to the current progress
+      DEBUG_PRINTF("Update Success: %u\nRebooting...\n", upload.totalSize);
+    } else {
+      Update.printError(Serial);
+    }
+  }
+}
+
+/*
  * get all relay and servo states: GET http://wifi-relay.local/all
  * ----------------------------------------------------------------------------
  */
@@ -311,6 +339,41 @@ void handlePostConfigfile() {
     }
   } else {
     DEBUG_PRINTLN("no valid configfile");
+    server.send(404, "text/plain", "FileNotFound");
+  }
+}
+
+/*
+ * get WiFi ssid and pass: GET http://wifi-relay.local/settings/wifi
+ * ----------------------------------------------------------------------------
+ */
+void handleGetWiFi() {
+  sendWiFi();
+}
+
+/*
+ * set WiFi ssid and pass: POST http://wifi-relay.local/settings/wifi
+ * ----------------------------------------------------------------------------
+ */
+void handlePostWiFi() {
+  String data = server.arg("plain");
+  DynamicJsonBuffer jsonBuffer;
+  JsonObject& json = jsonBuffer.parseObject(data);
+  String cmd = json["command"];
+  DEBUG_PRINT("handlePostWiFi: ");
+  DEBUG_PRINTLN(cmd);
+  if (cmd == "wifi") {
+    String wifi_ssid = json["ssid"];
+    String wifi_pass = json["pass"];
+    char ssidChars[50];
+    wifi_ssid.toCharArray(ssidChars, 50);
+    char passwordChars[50];
+    wifi_pass.toCharArray(passwordChars, 50);
+    WiFi.begin(ssidChars, passwordChars);
+    server.sendHeader("Location", String("/settings.htm"), true);
+    server.send(302, "text/plain", "");
+  } else {
+    DEBUG_PRINTLN("no valid wifi settings");
     server.send(404, "text/plain", "FileNotFound");
   }
 }
