@@ -18,7 +18,7 @@
 
 // declare and initial upload file container and web server
 File fsUploadFile;
-ESP8266WebServer server = ESP8266WebServer(80);
+ESP8266WebServer server(80);
 
 /*
  * forward declare functions
@@ -32,7 +32,6 @@ void setServo(uint8_t idx, uint8_t value);
 void sendServo(uint8_t idx);
 void sendStatus();
 void sendConfigfile();
-void sendWiFi();
 
 /*
  * format bytes
@@ -339,41 +338,6 @@ void handlePostConfigfile() {
     }
   } else {
     DEBUG_PRINTLN("no valid configfile");
-    server.send(404, "text/plain", "FileNotFound");
-  }
-}
-
-/*
- * get WiFi ssid and pass: GET http://wifi-relay.local/settings/wifi
- * ----------------------------------------------------------------------------
- */
-void handleGetWiFi() {
-  sendWiFi();
-}
-
-/*
- * set WiFi ssid and pass: POST http://wifi-relay.local/settings/wifi
- * ----------------------------------------------------------------------------
- */
-void handlePostWiFi() {
-  String data = server.arg("plain");
-  DynamicJsonBuffer jsonBuffer;
-  JsonObject& json = jsonBuffer.parseObject(data);
-  String cmd = json["command"];
-  DEBUG_PRINT("handlePostWiFi: ");
-  DEBUG_PRINTLN(cmd);
-  if (cmd == "wifi") {
-    String wifi_ssid = json["ssid"];
-    String wifi_pass = json["pass"];
-    char ssidChars[50];
-    wifi_ssid.toCharArray(ssidChars, 50);
-    char passwordChars[50];
-    wifi_pass.toCharArray(passwordChars, 50);
-    WiFi.begin(ssidChars, passwordChars);
-    server.sendHeader("Location", String("/settings.htm"), true);
-    server.send(302, "text/plain", "");
-  } else {
-    DEBUG_PRINTLN("no valid wifi settings");
     server.send(404, "text/plain", "FileNotFound");
   }
 }

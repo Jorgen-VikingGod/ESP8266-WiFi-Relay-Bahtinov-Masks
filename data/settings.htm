@@ -167,24 +167,6 @@
               </div>
               <br />
             </div><!-- row -->
-            <div class="row form-group">
-              <div class="col-xs-3">
-                <label data-toggle="tooltip" title="Name/SSID for your favorite WiFi network">SSID</label>
-              </div>
-              <div class="col-xs-9">
-                <input class="form-control" placeholder="Favorite Network SSID" id="ssid" type="text">
-              </div>
-              <br />
-            </div><!-- row -->
-            <div class="row form-group">
-              <div class="col-xs-3">
-                <label data-toggle="tooltip" title="Password for your favorite WiFi network">WiFi Password</label>
-              </div>
-              <div class="col-xs-9">
-                <input class="form-control" placeholder="" id="wifipwd" type="password" data-toggle="password">
-              </div>
-              <br />
-            </div><!-- row -->
           </div><!-- panel-body -->
         </div><!-- panel -->
       </div><!-- col-12 -->
@@ -235,6 +217,14 @@
                       <option value="16">GPIO-16 (D0)</option>
                     </select>
                   </div><!-- col-9 -->
+                </div><!-- row -->
+                <div class="row form-group">
+                  <div class="col-xs-3">
+                    <label data-toggle="tooltip" title="Set the pulse on time in ms">Pulse Time</label>
+                  </div>
+                  <div class="col-xs-9">
+                    <input class="form-control" placeholder="Pulse Time in ms" value="500" id="relay1Pulse" type="number">
+                  </div>
                 </div><!-- row -->
               </div><!-- col-6 -->
               <div class="col-sm-6">
@@ -693,7 +683,7 @@
           </div><!-- panel-body -->
         </div><!-- panel -->
       </div><!-- col-4 -->
-      <div class="col-sm-12 col-md-4">
+      <div class="col-sm-6 col-md-4">
         <div class="panel panel-info">
           <div class="panel-heading">Update Firmware</div>
           <div class="panel-body">
@@ -706,7 +696,7 @@
             </form>
           </div><!-- panel-body -->
         </div><!-- panel -->
-      </div><!-- col-6 -->
+      </div><!-- col-4 -->
     </div><!-- row -->
   </div><!-- container -->
   <script src="js/scripts.js"></script>

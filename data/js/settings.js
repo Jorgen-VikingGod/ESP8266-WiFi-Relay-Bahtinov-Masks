@@ -20,11 +20,10 @@ $('#btnSaveConf').click(function() {
     command: 'configfile',
     hostname: $('#hostname').val(),
     adminpwd: adminpwd,
-    ssid: $('#ssid').val(),
-    wifipwd: $('#wifipwd').val(),
     relay1: { name: $('#relay1Name').val(),
               type: $('#relay1Type option:selected').val(),
-              pin: $('#relay1Pin option:selected').val() },
+              pin: $('#relay1Pin option:selected').val(),
+              pulse: $('#relay1Pulse').val() },
     relay2: { name: $('#relay2Name').val(),
               type: $('#relay2Type option:selected').val(),
               pin: $('#relay2Pin option:selected').val() },
@@ -129,12 +128,11 @@ function getAll() {
     $('#loadModal').modal('hide');
     $('#adminPwd').val(data.adminpwd);
     $('#hostname').val(data.hostname);
-    $('#ssid').val(data.ssid);
-    $('#wifipwd').val(data.wifipwd);
     var relay1Name = (data.relay1.name ? data.relay1.name : 'Relay 1');
     $('#relay1Name').val(relay1Name);
     $('#relay1Type').val(data.relay1.type).change();
     $('#relay1Pin').val(data.relay1.pin).change();
+    $('#relay1Pulse').val(data.relay1.pulse);
     var relay2Name = (data.relay2.name ? data.relay2.name : 'Relay 2');
     $('#relay2Name').val(relay2Name);
     $('#relay2Type').val(data.relay2.type).change();

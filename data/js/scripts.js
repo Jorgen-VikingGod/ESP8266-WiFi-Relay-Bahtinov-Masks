@@ -42,6 +42,14 @@ $('#btnRefresh').click(function() {
   getCurrent();
 });
 
+$('#btnRelayPulse').click(function() {
+  $('#loadModal').modal('show');
+  $.get(urlBase + 'pulse', function(data) {
+    $('#loadModal').modal('hide');
+    $('#status').html('Ready');
+  });
+});
+
 $('.btn-toggle').click(function() {
   var btnTgl = $(this);
   var id = btnTgl.attr('id');

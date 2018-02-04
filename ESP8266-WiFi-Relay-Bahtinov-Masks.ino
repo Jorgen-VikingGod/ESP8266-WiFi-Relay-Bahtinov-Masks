@@ -17,6 +17,8 @@ extern "C" {
 #include "user_interface.h"
 }
 
+#include <FS.h>
+
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
@@ -25,11 +27,9 @@ extern "C" {
 #include <Wire.h>
 #include <Adafruit_PWMServoDriver.h>
 #include <Hash.h>
-#include <FS.h>
+#include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
 #include "ArduinoJson.h"                  //https://github.com/bblanchon/ArduinoJson
 #include "webserver.h"
-
-const char *default_password = "admin";
 
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 
@@ -50,6 +50,19 @@ void setup() {
   if (_debug) {
     Serial.begin(115200);
   }
+  
+  WiFiManager wifiManager;
+
+  if (!wifiManager.autoConnect("WiFiRelay", "admin")) {
+    Serial.println("failed to connect, we should reset as see if it connects");
+    delay(3000);
+    ESP.reset();
+    delay(5000);
+  }
+
+  Serial.println("local ip");
+  Serial.println(WiFi.localIP());
+  
   pinMode(D0, OUTPUT);
   pinMode(D4, OUTPUT);
   pinMode(D5, OUTPUT);
@@ -74,11 +87,7 @@ void setup() {
   // Add service to MDNS
   MDNS.addService("http", "tcp", 80);
   // load config.json and connect to WiFI
-  if (!loadConfiguration()) {
-    // if no configuration found,
-    // try to connect hard coded multi APs
-    connectSTA(nullptr, nullptr, "wifi-relay");
-  }
+  loadConfiguration();
 
   // handle requests
   server.on("/list", HTTP_GET, handleFileList);
@@ -97,10 +106,9 @@ void setup() {
     if (!handleFileRead(server.uri()))
       server.send(404, "text/plain", "FileNotFound");
   });
-  server.on("/wifi", HTTP_GET, handleGetWiFi);
-  server.on("/wifi", HTTP_POST, handlePostWiFi);
   server.on("/all", HTTP_GET, handleGetAll);
   server.on("/current", HTTP_GET, sendCurrentStates);
+  server.on("/pulse", HTTP_GET, pulseRelay);
   server.on("/relay", HTTP_GET, handleGetRelay);
   server.on("/servo", HTTP_GET, handleGetServo);
   server.on("/toggle", HTTP_POST, handlePostToggle);
@@ -205,6 +213,7 @@ bool loadConfiguration() {
   // get relay settings
   relay[0].type = json["relay1"]["type"];
   relay[0].pin = json["relay1"]["pin"];
+  relay[0].pulse = json["relay1"]["pulse"];
   relay[1].type = json["relay2"]["type"];
   relay[1].pin = json["relay2"]["pin"];
   relay[2].type = json["relay3"]["type"];
@@ -230,82 +239,12 @@ bool loadConfiguration() {
   servo[2].pulseMax = json["servo3"]["pulsemax"];
   servo[2].pin = json["servo3"]["pin"];
   // get stored wifi settings
-  const char * ssid = json["ssid"];
-  const char * password = json["wifipwd"];
-  const char * hostname = json["hostname"];
+  const char *hostname = json["hostname"];
 
-  // try to connect with stored settings and hard coded ones
-  if (!connectSTA(ssid, password, hostname)) {
-    return false;
+  WiFi.hostname(hostname);
+  if (MDNS.begin(hostname)) {
+    DEBUG_PRINTLN(F("MDNS responder started"));
   }
-  return true;
-}
-
-/*
- * try to connect WiFi
- * ----------------------------------------------------------------------------
- */
-bool connectSTA(const char* ssid, const char* password, const char * hostname) {
-  if (ssid && password) {
-    WiFi.mode(WIFI_STA);
-    String stored_ssid = WiFi.SSID();
-    if (stored_ssid != NULL && stored_ssid != "" && stored_ssid == ssid) {
-      DEBUG_PRINTLN(F(""));
-      DEBUG_PRINT(F("[INFO] WiFi begin: '")); // Great, we connected, inform
-      DEBUG_PRINT(stored_ssid); 
-      DEBUG_PRINTLN(F("'"));
-      WiFi.softAPdisconnect();
-      WiFi.begin();
-    } else {
-      DEBUG_PRINTLN(F(""));
-      DEBUG_PRINT(F("[INFO] WiFi begin: '")); // Great, we connected, inform
-      DEBUG_PRINT(ssid); 
-      DEBUG_PRINT(F("' - '")); 
-      DEBUG_PRINT(password); 
-      DEBUG_PRINTLN(F("'"));
-      WiFi.disconnect();
-      WiFi.softAPdisconnect();
-      WiFi.begin(ssid, password);
-    }
-  }
-  uint8_t wifi_counter = 0;
-  while (WiFi.status() != WL_CONNECTED && wifi_counter < 20)
-  {
-    delay(500);
-    Serial.print(".");
-    wifi_counter++;
-  }
-  if (hostname) {
-    WiFi.hostname(hostname);
-    if (MDNS.begin(hostname)) {
-      DEBUG_PRINTLN(F("MDNS responder started"));
-    }
-    if (WiFi.status() != WL_CONNECTED || wifi_counter >= 20) {
-      WiFi.mode(WIFI_AP);
-      DEBUG_PRINTLN(WiFi.softAP(hostname, default_password) ? "ready" : "failed");
-    }
-  } else {
-    String hname = "wifi-relay-";
-    hname += String(ESP.getChipId(), HEX);
-    char hostname2[50];
-    hname.toCharArray(hostname2, 50);
-    WiFi.hostname(hostname2);
-    if (MDNS.begin(hostname2)) {
-      DEBUG_PRINTLN(F("MDNS responder started"));
-    }
-    if (WiFi.status() != WL_CONNECTED || wifi_counter >= 20) {
-      WiFi.mode(WIFI_AP);
-      DEBUG_PRINTLN(WiFi.softAP(hostname2, default_password) ? "ready" : "failed");
-    }
-  }
-  
-  DEBUG_PRINTLN("");
-  DEBUG_PRINT(wifi_counter);
-  DEBUG_PRINTLN("");
-  DEBUG_PRINT(F("[INFO] Client IP address: ")); // Great, we connected, inform
-  DEBUG_PRINTLN(WiFi.localIP());
-  DEBUG_PRINT(F("[INFO] AP IP address: ")); // Great, we connected, inform
-  DEBUG_PRINTLN(WiFi.softAPIP());
   return true;
 }
 
@@ -402,38 +341,6 @@ void sendConfigfile() {
 }
 
 /*
- * send ESP8266 status
- * ----------------------------------------------------------------------------
- */
-void sendWiFi() {
-  DEBUG_PRINTLN("sendWiFi()");
-  struct ip_info info;
-  DynamicJsonBuffer jsonBuffer;
-  JsonObject& root = jsonBuffer.createObject();
-  root["command"] = "wifi";
-  root["chipid"] = String(ESP.getChipId(), HEX);
-  wifi_get_ip_info(STATION_IF, &info);
-  struct station_config conf;
-  wifi_station_get_config(&conf);
-  root["ssid"] = String(reinterpret_cast<char*>(conf.ssid));
-  root["dns"] = printIP(WiFi.dnsIP());
-  root["mac"] = WiFi.macAddress();
-  IPAddress ipaddr = IPAddress(info.ip.addr);
-  IPAddress gwaddr = IPAddress(info.gw.addr);
-  IPAddress nmaddr = IPAddress(info.netmask.addr);
-  root["ip"] = printIP(ipaddr);
-  root["gateway"] = printIP(gwaddr);
-  root["netmask"] = printIP(nmaddr);
-  root["localip"] = WiFi.localIP().toString();
-  root["softapip"] = WiFi.softAPIP().toString();
-  String json;
-  root.printTo(json);
-  DEBUG_PRINTLN(json);
-  server.setContentLength(root.measureLength());
-  server.send(200, "application/json", json);
-}
-
-/*
  * send all states
  * ----------------------------------------------------------------------------
  */
@@ -462,6 +369,7 @@ void sendAll() {
   JsonObject& relay1 = jsonBuffer2.createObject();
   relay1["name"] = json["relay1"]["name"];
   relay1["state"] = relay[0].state;
+  relay1["pulse"] = relay[0].pulse;
   root.set("relay1", relay1);
   JsonObject& relay2 = jsonBuffer2.createObject();
   relay2["name"] = json["relay2"]["name"];
@@ -510,6 +418,7 @@ void sendCurrentStates() {
   // create relay json values
   JsonObject& relay1 = jsonBuffer.createObject();
   relay1["state"] = relay[0].state;
+  relay1["pulse"] = relay[0].pulse;
   root.set("relay1", relay1);
   JsonObject& relay2 = jsonBuffer.createObject();
   relay2["state"] = relay[1].state;
@@ -538,6 +447,18 @@ void sendCurrentStates() {
   DEBUG_PRINTLN(jsonStr);
   server.setContentLength(root.measureLength());
   server.send(200, "application/json", jsonStr);
+}
+
+/*
+ * pulse relay 1: switch on - delay for pulse wait time and switch off again
+ * ----------------------------------------------------------------------------
+ */
+void pulseRelay() {
+  DEBUG_PRINTLN("pulseRelay()");
+  setRelay(0, 1);
+  delay(relay[0].pulse);
+  setRelay(0, 0);
+  server.send(200, "text/plain", "");
 }
 
 /*

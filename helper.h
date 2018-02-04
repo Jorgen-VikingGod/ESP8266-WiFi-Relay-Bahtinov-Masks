@@ -57,10 +57,12 @@ struct sRelay {
   uint8_t pin;
   uint8_t type;
   uint8_t state;
-  sRelay(uint8_t relayPin, uint8_t relayType = HIGH, uint8_t relayState = LOW) {
+  uint16_t pulse;
+  sRelay(uint8_t relayPin, uint8_t relayType = HIGH, uint8_t relayState = LOW, uint16_t relayPulse = 500) {
     pin = relayPin;
     type = relayType;
     state = relayState;
+    pulse = relayPulse;
   }
 };
 
